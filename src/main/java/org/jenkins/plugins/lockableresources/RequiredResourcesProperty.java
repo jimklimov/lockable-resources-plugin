@@ -31,16 +31,18 @@ public class RequiredResourcesProperty extends JobProperty<Job<?, ?>> {
 	private final String resourceNamesVar;
 	private final String resourceNumber;
 	private final String labelName;
+	private final boolean injectResourcesProperties;
 
 	@DataBoundConstructor
 	public RequiredResourcesProperty(String resourceNames,
 			String resourceNamesVar, String resourceNumber,
-			String labelName) {
+			String labelName, boolean injectResourcesProperties) {
 		super();
 		this.resourceNames = resourceNames;
 		this.resourceNamesVar = resourceNamesVar;
 		this.resourceNumber = resourceNumber;
 		this.labelName = labelName;
+		this.injectResourcesProperties = injectResourcesProperties;
 	}
 
 	public String[] getResources() {
@@ -65,6 +67,10 @@ public class RequiredResourcesProperty extends JobProperty<Job<?, ?>> {
 
 	public String getLabelName() {
 		return labelName;
+	}
+
+	public boolean isInjectResourcesProperties() {
+		return injectResourcesProperties;
 	}
 
 	@Extension
@@ -99,11 +105,14 @@ public class RequiredResourcesProperty extends JobProperty<Job<?, ?>> {
 			String labelName = Util.fixEmptyAndTrim(json
 					.getString("labelName"));
 
+			
+			boolean injectResourcesProperties = (json.has("injectResourcesProperties") && json.getBoolean("injectResourcesProperties"));
+			
 			if (resourceNames == null && labelName == null)
 				return null;
 
 			return new RequiredResourcesProperty(resourceNames,
-					resourceNamesVar, resourceNumber, labelName);
+					resourceNamesVar, resourceNumber, labelName, injectResourcesProperties);
 		}
 
 		public FormValidation doCheckResourceNames(@QueryParameter String value) {

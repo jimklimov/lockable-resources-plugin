@@ -19,11 +19,13 @@ import hudson.model.ParameterValue;
 import hudson.model.StringParameterValue;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.logging.Logger;
 
 import org.jenkins.plugins.lockableresources.LockableResourcesManager;
 import org.jenkins.plugins.lockableresources.LockableResource;
+import org.jenkins.plugins.lockableresources.LockableResourceProperty;
 import org.jenkins.plugins.lockableresources.actions.LockedResourcesBuildAction;
 
 @Extension
@@ -58,11 +60,21 @@ public class LockRunListener extends RunListener<AbstractBuild<?, ?>> {
 							LOG_PREFIX, required);
 					LOGGER.fine(build.getFullDisplayName()
 							+ " acquired lock on " + required);
+					
+					List<ParameterValue> params = new ArrayList<ParameterValue>();
 					if (resources.requiredVar != null) {
-						List<ParameterValue> params = new ArrayList<ParameterValue>();
 						params.add(new StringParameterValue(
 							resources.requiredVar,
 							required.toString().replaceAll("[\\]\\[]", "")));
+					}
+					if (resources.injectResourcesProperties) {
+						for (LockableResource lr : required) {
+							for (LockableResourceProperty p : lr.getProperties()) {
+								params.add(new StringParameterValue(p.getName(), p.getValue()));
+							}
+						}
+					}
+					if (!params.isEmpty()) {
 						build.addAction(new ParametersAction(params));
 					}
 				} else {

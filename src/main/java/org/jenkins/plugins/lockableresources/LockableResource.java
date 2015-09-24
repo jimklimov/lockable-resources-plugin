@@ -21,6 +21,7 @@ import hudson.model.Queue.Task;
 import hudson.model.User;
 import hudson.tasks.Mailer.UserProperty;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -45,6 +46,7 @@ public class LockableResource extends AbstractDescribableImpl<LockableResource> 
 	private final String description;
 	private final String labels;
 	private String reservedBy;
+	private List<LockableResourceProperty> properties;
 
 	private transient int queueItemId = NOT_QUEUED;
 	private transient String queueItemProject = null;
@@ -53,10 +55,14 @@ public class LockableResource extends AbstractDescribableImpl<LockableResource> 
 
 	@DataBoundConstructor
 	public LockableResource(
-			String name, String description, String labels, String reservedBy) {
+			String name, String description, String labels, String reservedBy, List<LockableResourceProperty> properties) {
 		this.name = name;
 		this.description = description;
 		this.labels = labels;
+		this.properties = new ArrayList<LockableResourceProperty>();
+		if (properties != null) {
+			this.properties.addAll(properties);
+		}
 		this.reservedBy = Util.fixEmptyAndTrim(reservedBy);
 	}
 
@@ -73,6 +79,11 @@ public class LockableResource extends AbstractDescribableImpl<LockableResource> 
 	@Exported
 	public String getLabels() {
 		return labels;
+	}
+
+	@Exported
+	public List<LockableResourceProperty> getProperties() {
+		return properties;
 	}
 
 	public boolean isValidLabel(String candidate, Map<String, Object> params) {

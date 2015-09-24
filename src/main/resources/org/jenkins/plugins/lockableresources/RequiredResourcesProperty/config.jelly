@@ -26,6 +26,9 @@
 			<f:entry title="${%Number of resources to request}" field="resourceNumber">
 				<f:textbox/>
 			</f:entry>
+			<f:entry title="${%Inject properties of resources}" field="injectResourcesProperties">
+				<f:checkbox/>
+			</f:entry>
 		</f:nested>
 	</f:optionalBlock>
 </j:jelly>
