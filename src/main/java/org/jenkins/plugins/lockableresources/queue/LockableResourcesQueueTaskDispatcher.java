@@ -8,24 +8,39 @@
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 package org.jenkins.plugins.lockableresources.queue;
 
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+import edu.umd.cs.findbugs.annotations.NonNull;
 import hudson.Extension;
 import hudson.matrix.MatrixConfiguration;
 import hudson.matrix.MatrixProject;
 import hudson.model.AbstractProject;
+import hudson.model.Job;
 import hudson.model.Queue;
 import hudson.model.queue.QueueTaskDispatcher;
 import hudson.model.queue.CauseOfBlockage;
+import hudson.model.ParametersAction;
+import hudson.model.ParameterValue;
 
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import org.apache.commons.lang.time.DateUtils;
 import org.jenkins.plugins.lockableresources.LockableResource;
 import org.jenkins.plugins.lockableresources.LockableResourcesManager;
+import org.kohsuke.accmod.Restricted;
+import org.kohsuke.accmod.restrictions.NoExternalUse;
 
 @Extension
 public class LockableResourcesQueueTaskDispatcher extends QueueTaskDispatcher {
+
+	private transient Cache<Long,Date> lastLogged = CacheBuilder.newBuilder().expireAfterWrite(30, TimeUnit.MINUTES).build();
 
 	static final Logger LOGGER = Logger
 			.getLogger(LockableResourcesQueueTaskDispatcher.class.getName());
@@ -37,13 +52,13 @@ public class LockableResourcesQueueTaskDispatcher extends QueueTaskDispatcher {
 		if (item.task instanceof MatrixProject)
 			return null;
 
-		AbstractProject<?, ?> project = Utils.getProject(item);
+		Job<?, ?> project = Utils.getProject(item);
 		if (project == null)
 			return null;
 
 		LockableResourcesStruct resources = Utils.requiredResources(project);
 		if (resources == null ||
-			(resources.required.isEmpty() && resources.label.isEmpty())) {
+			(resources.required.isEmpty() && resources.label.isEmpty() && resources.getResourceMatchScript() == null)) {
 			return null;
 		}
 
@@ -57,20 +72,64 @@ public class LockableResourcesQueueTaskDispatcher extends QueueTaskDispatcher {
 		LOGGER.finest(project.getName() +
 			" trying to get resources with these details: " + resources);
 
-		if (resourceNumber > 0 || !resources.label.isEmpty()) {
+		if (resourceNumber > 0 || !resources.label.isEmpty() || resources.getResourceMatchScript() != null) {
 			Map<String, Object> params = new HashMap<String, Object>();
-			if (item.task instanceof MatrixConfiguration) {
-			    MatrixConfiguration matrix = (MatrixConfiguration) item.task;
-			    params.putAll(matrix.getCombination());
+
+			// Inject Build Parameters, if possible and applicable to the "item" type
+			try {
+				List<ParametersAction> itemparams = item.getActions(ParametersAction.class);
+				if (itemparams != null) {
+					for ( ParametersAction actparam : itemparams) {
+						if (actparam == null) continue;
+						for ( ParameterValue p : actparam.getParameters() ) {
+							if (p == null) continue;
+							params.put(p.getName(), p.getValue());
+						}
+					}
+				}
+			} catch(Exception ex) {
+				// Report the error and go on with the build -
+				// perhaps this item is not a build with args, etc.
+				// Note this is likely to fail a bit later in such case.
+				if (LOGGER.isLoggable(Level.WARNING)) {
+					if (lastLogged.getIfPresent(item.getId()) == null) {
+						lastLogged.put(item.getId(), new Date());
+					String itemName = project.getFullName() + " (id=" + item.getId() + ")";
+					LOGGER.log(Level.WARNING, "Failed to get build params from item " + itemName, ex);
+					}
+				}
 			}
 
-			List<LockableResource> selected = LockableResourcesManager.get().queue(
+			if (item.task instanceof MatrixConfiguration) {
+				MatrixConfiguration matrix = (MatrixConfiguration) item.task;
+				params.putAll(matrix.getCombination());
+			}
+
+			final List<LockableResource> selected ;
+			try {
+				selected = LockableResourcesManager.get().tryQueue(
 					resources,
-					item.id,
+					item.getId(),
 					project.getFullName(),
 					resourceNumber,
 					params,
 					LOGGER);
+			} catch(ExecutionException ex) {
+				Throwable toReport = ex.getCause();
+				if (toReport == null) { // We care about the cause only
+					toReport = ex;
+				}
+				if (LOGGER.isLoggable(Level.WARNING)) {
+					if (lastLogged.getIfPresent(item.getId()) == null) {
+						lastLogged.put(item.getId(), new Date());
+
+						String itemName = project.getFullName() + " (id=" + item.getId() + ")";
+						LOGGER.log(Level.WARNING, "Failed to queue item " + itemName, toReport.getMessage());
+					}
+				}
+
+				return new BecauseResourcesQueueFailed(resources, toReport);
+			}
 
 			if (selected != null) {
 				LOGGER.finest(project.getName() + " reserved resources " + selected);
@@ -81,7 +140,7 @@ public class LockableResourcesQueueTaskDispatcher extends QueueTaskDispatcher {
 			}
 
 		} else {
-			if (LockableResourcesManager.get().queue(resources.required, item.id)) {
+			if (LockableResourcesManager.get().queue(resources.required, item.getId(), project.getFullDisplayName())) {
 				LOGGER.finest(project.getName() + " reserved resources " + resources.required);
 				return null;
 			} else {
@@ -109,4 +168,25 @@ public class LockableResourcesQueueTaskDispatcher extends QueueTaskDispatcher {
 		}
 	}
 
+	// Only for UI
+	@Restricted(NoExternalUse.class)
+	public static class BecauseResourcesQueueFailed extends CauseOfBlockage {
+		
+		@NonNull
+		private final LockableResourcesStruct resources;
+		@NonNull
+		private final Throwable cause;
+
+		public BecauseResourcesQueueFailed(@NonNull LockableResourcesStruct resources, @NonNull Throwable cause) {
+			this.cause = cause;
+			this.resources = resources;
+		}
+
+		@Override
+		public String getShortDescription() {
+			//TODO: Just a copy-paste from BecauseResourcesLocked, seems strange
+			String resourceInfo = (resources.label.isEmpty()) ? resources.required.toString() : "with label " + resources.label;
+			return "Execution failed while acquiring the resource " + resourceInfo + ". " + cause.getMessage();
+		}
+	}
 }

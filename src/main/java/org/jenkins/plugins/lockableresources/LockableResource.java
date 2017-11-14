@@ -11,18 +11,23 @@ package org.jenkins.plugins.lockableresources;
 import groovy.lang.Binding;
 import groovy.lang.GroovyShell;
 import hudson.Extension;
+import hudson.PluginManager;
 import hudson.Util;
 import hudson.model.AbstractDescribableImpl;
 import hudson.model.AbstractBuild;
 import hudson.model.Descriptor;
 import hudson.model.Queue;
+import hudson.model.Run;
 import hudson.model.Queue.Item;
 import hudson.model.Queue.Task;
 import hudson.model.User;
 import hudson.tasks.Mailer.UserProperty;
 
+import java.io.IOException;
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
@@ -30,12 +35,25 @@ import java.util.logging.Logger;
 
 import jenkins.model.Jenkins;
 
+import org.jenkinsci.plugins.scriptsecurity.sandbox.groovy.SecureGroovyScript;
+import org.jenkinsci.plugins.workflow.steps.StepContext;
+import org.jinterop.winreg.IJIWinReg.saveFile;
 import org.kohsuke.stapler.DataBoundConstructor;
+import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.export.Exported;
 import org.kohsuke.stapler.export.ExportedBean;
 
+import com.infradna.tool.bridge_method_injector.WithBridgeMethods;
+
+import edu.umd.cs.findbugs.annotations.CheckForNull;
+import java.util.concurrent.ExecutionException;
+
+import javax.annotation.Nonnull;
+import org.kohsuke.accmod.Restricted;
+import org.kohsuke.accmod.restrictions.NoExternalUse;
+
 @ExportedBean(defaultVisibility = 999)
-public class LockableResource extends AbstractDescribableImpl<LockableResource> {
+public class LockableResource extends AbstractDescribableImpl<LockableResource> implements Serializable {
 
 	private static final Logger LOGGER = Logger.getLogger(LockableResource.class.getName());
 	public static final int NOT_QUEUED = 0;
@@ -43,17 +61,27 @@ public class LockableResource extends AbstractDescribableImpl<LockableResource> 
 	public static final String GROOVY_LABEL_MARKER = "groovy:";
 
 	private final String name;
-	private final String description;
-	private final String labels;
-	private String reservedBy;
+	private String description = "";
+	private String labels = "";
+	private String reservedBy = null;
 	private List<LockableResourceProperty> properties;
 
-	private transient int queueItemId = NOT_QUEUED;
-	private transient String queueItemProject = null;
-	private transient AbstractBuild<?, ?> build = null;
-	private transient long queuingStarted = 0;
+	private long queueItemId = NOT_QUEUED;
+	private String queueItemProject = null;
+	private transient  Run<?, ?> build = null;
+	// Needed to make the state non-transient
+	private String buildExternalizableId = null;
+	private long queuingStarted = 0;
 
-	@DataBoundConstructor
+	/**
+	 * Was used within the initial implementation of Pipeline functionality
+	 * using {@link LockStep}, but became deprecated once several resources
+	 * could be locked at once. See queuedContexts in {@link LockableResourcesManager}.
+	 */
+	@Deprecated
+	private List<StepContext> queuedContexts = new ArrayList<StepContext>();
+
+	@Deprecated
 	public LockableResource(
 			String name, String description, String labels, String reservedBy, List<LockableResourceProperty> properties) {
 		this.name = name;
@@ -64,6 +92,39 @@ public class LockableResource extends AbstractDescribableImpl<LockableResource> 
 			this.properties.addAll(properties);
 		}
 		this.reservedBy = Util.fixEmptyAndTrim(reservedBy);
+	}
+
+	@Deprecated
+	public LockableResource(
+			String name, String description, String labels, String reservedBy) {
+		this(name, description, labels, reservedBy, null);
+	}
+
+	@DataBoundConstructor
+	public LockableResource(String name) {
+		this.name = name;
+	}
+
+	private Object readResolve() {
+		if (queuedContexts == null) { // this field was added after the initial version if this class
+			queuedContexts = new ArrayList<StepContext>();
+		}
+		return this;
+	}
+
+	@Deprecated
+	public List<StepContext> getQueuedContexts() {
+		return this.queuedContexts;
+	}
+
+	@DataBoundSetter
+	public void setDescription(String description) {
+		this.description = description;
+	}
+
+	@DataBoundSetter
+	public void setLabels(String labels) {
+		this.labels = labels;
 	}
 
 	@Exported
@@ -87,8 +148,7 @@ public class LockableResource extends AbstractDescribableImpl<LockableResource> 
 	}
 
 	public boolean isValidLabel(String candidate, Map<String, Object> params) {
-		return candidate.startsWith(GROOVY_LABEL_MARKER) ? expressionMatches(
-				candidate, params) : labelsContain(candidate);
+		return labelsContain(candidate);
 	}
 
 	private boolean labelsContain(String candidate) {
@@ -99,28 +159,29 @@ public class LockableResource extends AbstractDescribableImpl<LockableResource> 
 		return Arrays.asList(labels.split("\\s+"));
 	}
 
-	private boolean expressionMatches(String expression,
-			Map<String, Object> params) {
+	/**
+	 * Checks if the script matches the requirement.
+	 * @param script Script to be executed
+	 * @param params Extra script parameters
+	 * @return {@code true} if the script returns true (resource matches).
+	 * @throws ExecutionException Script execution failed (e.g. due to the missing permissions). Carries info in the cause
+	 */
+	@Restricted(NoExternalUse.class)
+	public boolean scriptMatches(@Nonnull SecureGroovyScript script, @CheckForNull Map<String, Object> params)
+		throws ExecutionException {
 		Binding binding = new Binding(params);
 		binding.setVariable("resourceName", name);
 		binding.setVariable("resourceDescription", description);
 		binding.setVariable("resourceLabels", makeLabelsList());
-		String expressionToEvaluate = expression.replace(GROOVY_LABEL_MARKER, "");
-		GroovyShell shell = new GroovyShell(binding);
 		try {
-			Object result = shell.evaluate(expressionToEvaluate);
+			Object result = script.evaluate(Jenkins.getInstance().getPluginManager().uberClassLoader, binding);
 			if (LOGGER.isLoggable(Level.FINE)) {
-				LOGGER.fine("Checked resource " + name + " for " + expression
+				LOGGER.fine("Checked resource " + name + " for " + script.getScript()
 						+ " with " + binding + " -> " + result);
 			}
 			return (Boolean) result;
 		} catch (Exception e) {
-			LOGGER.log(
-					Level.SEVERE,
-					"Cannot get boolean result out of groovy expression '"
-							+ expressionToEvaluate + "' on (" + binding + ")",
-					e);
-			return false;
+			throw new ExecutionException("Cannot get boolean result out of groovy expression. See system log for more info", e);
 		}
 	}
 
@@ -153,12 +214,12 @@ public class LockableResource extends AbstractDescribableImpl<LockableResource> 
 	}
 
 	// returns True if queued by any other task than the given one
-	public boolean isQueued(int taskId) {
+	public boolean isQueued(long taskId) {
 		this.validateQueuingTimeout();
 		return queueItemId != NOT_QUEUED && queueItemId != taskId;
 	}
 
-	public boolean isQueuedByTask(int taskId) {
+	public boolean isQueuedByTask(long taskId) {
 		this.validateQueuingTimeout();
 		return queueItemId == taskId;
 	}
@@ -171,23 +232,56 @@ public class LockableResource extends AbstractDescribableImpl<LockableResource> 
 
 	@Exported
 	public boolean isLocked() {
-		return build != null;
+		return getBuild() != null;
 	}
 
-	public AbstractBuild<?, ?> getBuild() {
+	/**
+	 * Resolve the lock cause for this resource. It can be reserved or locked.
+	 *
+	 * @return the lock cause or null if not locked
+	 */
+	@CheckForNull
+	public String getLockCause() {
+		if (isReserved()) {
+			return String.format("[%s] is reserved by %s", name, reservedBy);
+		}
+		if (isLocked()) {
+			return String.format("[%s] is locked by %s", name, buildExternalizableId);
+		}
+		return null;
+	}
+
+	@WithBridgeMethods(value=AbstractBuild.class, adapterMethod="getAbstractBuild")
+	public Run<?, ?> getBuild() {
+		if (build == null && buildExternalizableId != null) {
+			build = Run.fromExternalizableId(buildExternalizableId);
+		}
 		return build;
+	}
+
+	/**
+	 * @see {@link WithBridgeMethods}
+	 */
+	@Deprecated
+	private Object getAbstractBuild(final Run owner, final Class targetClass) {
+		return owner instanceof AbstractBuild ? (AbstractBuild) owner : null;
 	}
 
 	@Exported
 	public String getBuildName() {
-		if (build != null)
-			return build.getFullDisplayName();
+		if (getBuild() != null)
+			return getBuild().getFullDisplayName();
 		else
 			return null;
 	}
 
-	public void setBuild(AbstractBuild<?, ?> lockedBy) {
+	public void setBuild(Run<?, ?> lockedBy) {
 		this.build = lockedBy;
+		if (lockedBy != null) {
+			this.buildExternalizableId = lockedBy.getExternalizableId();
+		} else {
+			this.buildExternalizableId = null;
+		}
 	}
 
 	public Task getTask() {
@@ -199,7 +293,7 @@ public class LockableResource extends AbstractDescribableImpl<LockableResource> 
 		}
 	}
 
-	public int getQueueItemId() {
+	public long getQueueItemId() {
 		this.validateQueuingTimeout();
 		return queueItemId;
 	}
@@ -209,12 +303,12 @@ public class LockableResource extends AbstractDescribableImpl<LockableResource> 
 		return this.queueItemProject;
 	}
 
-	public void setQueued(int queueItemId) {
+	public void setQueued(long queueItemId) {
 		this.queueItemId = queueItemId;
 		this.queuingStarted = System.currentTimeMillis() / 1000;
 	}
 
-	public void setQueued(int queueItemId, String queueProjectName) {
+	public void setQueued(long queueItemId, String queueProjectName) {
 		this.setQueued(queueItemId);
 		this.queueItemProject = queueProjectName;
 	}
@@ -227,8 +321,9 @@ public class LockableResource extends AbstractDescribableImpl<LockableResource> 
 		}
 	}
 
+	@DataBoundSetter
 	public void setReservedBy(String userName) {
-		this.reservedBy = userName;
+		this.reservedBy = Util.fixEmptyAndTrim(userName);
 	}
 
 	public void unReserve() {
@@ -280,4 +375,6 @@ public class LockableResource extends AbstractDescribableImpl<LockableResource> 
 		}
 
 	}
+
+	private static final long serialVersionUID = 1L;
 }
