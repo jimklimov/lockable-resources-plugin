@@ -960,7 +960,7 @@ public class LockableResourcesManager extends GlobalConfiguration {
     }
 
     this.queuedContexts.add(
-        new QueuedContextStruct(context, requiredResources, resourceDescription));
+        new QueuedContextStruct(context, requiredResources, resourceDescription, variableName));
     save();
   }
 
