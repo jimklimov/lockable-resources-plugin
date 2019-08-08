@@ -396,7 +396,6 @@ public class LockableResourcesManager extends GlobalConfiguration {
 	public synchronized void unlock(List<LockableResource> resourcesToUnLock, @Nullable Run<?, ?> build) {
 		unlock(resourcesToUnLock, build, null, false);
 	}
-
 	public synchronized void unlock(@Nullable List<LockableResource> resourcesToUnLock,
 									@Nullable Run<?, ?> build, String requiredVar, boolean inversePrecedence) {
 		List<String> resourceNamesToUnLock = new ArrayList<>();
@@ -438,6 +437,10 @@ public class LockableResourcesManager extends GlobalConfiguration {
 			// It is guaranteed that there is an overlap between the two - the resources which are to be reused.
 			boolean needToWait = false;
 			for (LockableResource requiredResource : requiredResourceForNextContext) {
+				if(requiredResource.isStolen()) {
+					needToWait = true;
+					break;
+				}
 				if (!remainingResourceNamesToUnLock.contains(requiredResource.getName())) {
 					if (requiredResource.isReserved() || requiredResource.isLocked()) {
 						needToWait = true;
@@ -590,6 +593,17 @@ public class LockableResourcesManager extends GlobalConfiguration {
 			r.setReservedBy(userName);
 		}
 		save();
+	}
+
+	public synchronized boolean steal(List<LockableResource> resources,
+			String userName) {
+		for (LockableResource r : resources) {
+			r.setReservedBy(userName);
+			r.setStolen();
+		}
+		unlock(resources, null, null, false);
+		save();
+		return true;
 	}
 
 	private void unreserveResources(@Nonnull List<LockableResource> resources) {
