@@ -23,7 +23,6 @@ import java.util.logging.Logger;
 import javax.annotation.Nonnull;
 import jenkins.model.GlobalConfiguration;
 import jenkins.model.Jenkins;
-import net.sf.json.JSONException;
 import net.sf.json.JSONObject;
 import org.apache.commons.lang.StringUtils;
 import org.jenkins.plugins.lockableresources.queue.LockableResourcesCandidatesStruct;
@@ -67,6 +66,7 @@ public class LockableResourcesManager extends GlobalConfiguration {
     return declaredResources;
   }
 
+  @DataBoundSetter
   public synchronized void setDeclaredResources(List<LockableResource> declaredResources) {
     Map<String, LockableResource> lockedResources = new HashMap<>();
     for (LockableResource r : this.resources) {
@@ -784,15 +784,16 @@ public class LockableResourcesManager extends GlobalConfiguration {
           StaplerRequest req,
           JSONObject json)
           throws FormException {
+    BulkChange bc = new BulkChange(this);
     try {
-      List<LockableResource> newResouces =
-        req.bindJSONToList(LockableResource.class, json.get("declaredResources"));
-      setDeclaredResources(newResouces);
-      save();
-      return true;
-    } catch (JSONException e) {
+      req.bindJSON(this, json);
+      bc.commit();
+    } catch (IOException exception) {
+      LOGGER.log(
+          Level.WARNING, "Exception occurred while committing bulkchange operation.", exception);
       return false;
     }
+    return true;
   }
 
   /**
