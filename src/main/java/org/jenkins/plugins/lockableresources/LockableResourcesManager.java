@@ -9,33 +9,30 @@
 package org.jenkins.plugins.lockableresources;
 
 import edu.umd.cs.findbugs.annotations.CheckForNull;
-import hudson.Extension;
+import edu.umd.cs.findbugs.annotations.Nullable;
 import hudson.BulkChange;
+import hudson.Extension;
 import hudson.model.Run;
-
+import hudson.model.TaskListener;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-
-import hudson.model.TaskListener;
+import javax.annotation.Nonnull;
 import jenkins.model.GlobalConfiguration;
 import jenkins.model.Jenkins;
 import net.sf.json.JSONException;
 import net.sf.json.JSONObject;
-
 import org.apache.commons.lang.StringUtils;
 import org.jenkins.plugins.lockableresources.queue.LockableResourcesCandidatesStruct;
 import org.jenkins.plugins.lockableresources.queue.LockableResourcesStruct;
-import org.jenkinsci.plugins.scriptsecurity.sandbox.groovy.SecureGroovyScript;
 import org.jenkins.plugins.lockableresources.queue.QueuedContextStruct;
+import org.jenkinsci.plugins.scriptsecurity.sandbox.groovy.SecureGroovyScript;
 import org.jenkinsci.plugins.workflow.steps.StepContext;
+import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.StaplerRequest;
-
-import edu.umd.cs.findbugs.annotations.Nullable;
-import javax.annotation.Nonnull;
 
 @Extension
 public class LockableResourcesManager extends GlobalConfiguration {
