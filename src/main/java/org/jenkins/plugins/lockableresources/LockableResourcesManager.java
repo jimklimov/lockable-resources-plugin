@@ -495,6 +495,10 @@ public class LockableResourcesManager extends GlobalConfiguration {
       // reused.
       boolean needToWait = false;
       for (LockableResource requiredResource : requiredResourceForNextContext) {
+        if(requiredResource.isStolen()) {
+          needToWait = true;
+          break;
+        }
         if (!remainingResourceNamesToUnLock.contains(requiredResource.getName())) {
           if (requiredResource.isReserved() || requiredResource.isLocked()) {
             needToWait = true;
@@ -648,6 +652,18 @@ public class LockableResourcesManager extends GlobalConfiguration {
     for (LockableResource r : resources) {
       r.setReservedBy(userName);
     }
+    save();
+    return true;
+  }
+
+  public synchronized boolean steal(
+          List<LockableResource> resources,
+          String userName) {
+    for (LockableResource r : resources) {
+      r.setReservedBy(userName);
+      r.setStolen();
+    }
+    unlock(resources, null, null, false);
     save();
     return true;
   }
