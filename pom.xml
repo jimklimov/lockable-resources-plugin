@@ -50,7 +50,7 @@
   </scm>
 
   <properties>
-    <revision>2.7</revision>
+    <revision>2.8</revision>
     <changelist>-SNAPSHOT</changelist>
     <java.level>8</java.level>
     <workflow-support.version>2.12</workflow-support.version>
