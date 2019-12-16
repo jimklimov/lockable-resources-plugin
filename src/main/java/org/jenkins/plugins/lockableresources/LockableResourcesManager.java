@@ -818,6 +818,8 @@ public class LockableResourcesManager extends GlobalConfiguration {
           throws FormException {
     BulkChange bc = new BulkChange(this);
     try {
+      // reset resources to default before data-binding
+      this.resources = new ArrayList<>();
       req.bindJSON(this, json);
       bc.commit();
     } catch (IOException exception) {
