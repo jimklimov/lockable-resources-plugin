@@ -126,6 +126,58 @@ public class LockableResourcesRootAction implements RootAction {
 		rsp.forwardToPreviousPage(req);
 	}
 
+	public void doReassign(StaplerRequest req, StaplerResponse rsp)
+		throws IOException, ServletException {
+		Jenkins.getInstance().checkPermission(RESERVE);
+
+		String name = req.getParameter("resource");
+		LockableResource r = LockableResourcesManager.get().fromName(name);
+		if (r == null) {
+			rsp.sendError(404, "Resource not found " + name);
+			return;
+		}
+
+		String userName = getUserName();
+		if ( userName == null ||
+				!Jenkins.getInstance().hasPermission(Jenkins.ADMINISTER))
+			throw new AccessDeniedException2(Jenkins.getAuthentication(),
+					RESERVE);
+
+		if (userName.equals(r.getReservedBy())) {
+			// Can not achieve much by re-assigning the
+			// resource I already hold to myself again,
+			// that would just burn the compute resources.
+			//...unless something catches the event? (TODO?)
+			return;
+		}
+
+		List<LockableResource> resources = new ArrayList<>();
+		resources.add(r);
+		LockableResourcesManager.get().reassign(resources, userName);
+
+		rsp.forwardToPreviousPage(req);
+	}
+
+	public void doSteal(StaplerRequest req, StaplerResponse rsp)
+		throws IOException, ServletException {
+		Jenkins.getInstance().checkPermission(RESERVE);
+
+		String name = req.getParameter("resource");
+		LockableResource r = LockableResourcesManager.get().fromName(name);
+		if (r == null) {
+			rsp.sendError(404, "Resource not found " + name);
+			return;
+		}
+
+		List<LockableResource> resources = new ArrayList<>();
+		resources.add(r);
+		String userName = getUserName();
+		if (userName != null)
+			LockableResourcesManager.get().steal(resources, userName);
+
+		rsp.forwardToPreviousPage(req);
+	}
+
 	public void doUnreserve(StaplerRequest req, StaplerResponse rsp)
 		throws IOException, ServletException {
 		Jenkins.getInstance().checkPermission(RESERVE);
