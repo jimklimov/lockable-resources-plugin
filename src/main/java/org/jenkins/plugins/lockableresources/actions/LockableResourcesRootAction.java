@@ -15,16 +15,12 @@ import hudson.security.AccessDeniedException2;
 import hudson.security.Permission;
 import hudson.security.PermissionGroup;
 import hudson.security.PermissionScope;
-
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-
 import javax.servlet.ServletException;
-
 import jenkins.model.Jenkins;
-
 import org.jenkins.plugins.lockableresources.LockableResource;
 import org.jenkins.plugins.lockableresources.LockableResourcesManager;
 import org.jenkins.plugins.lockableresources.Messages;
@@ -49,11 +45,11 @@ public class LockableResourcesRootAction implements RootAction {
 			Messages.LockableResourcesRootAction_ViewPermission(),
 			Messages._LockableResourcesRootAction_ViewPermission_Description(), Jenkins.ADMINISTER,
 			PermissionScope.JENKINS);
-	
+
 	public static final String ICON = "/plugin/lockable-resources/img/device-24x24.png";
 
 	public String getIconFileName() {
-		return (Jenkins.getInstance().hasPermission(VIEW)) ? ICON : null;
+		return (Jenkins.get().hasPermission(VIEW)) ? ICON : null;
 	}
 
 	public String getUserName() {
@@ -65,11 +61,11 @@ public class LockableResourcesRootAction implements RootAction {
 	}
 
 	public String getDisplayName() {
-		return "Lockable Resources";
+	  return Messages.LockableResourcesRootAction_PermissionGroup();
 	}
 
 	public String getUrlName() {
-		return (Jenkins.getInstance().hasPermission(VIEW)) ? "lockable-resources" : "";
+		return (Jenkins.get().hasPermission(VIEW)) ? "lockable-resources" : "";
 	}
 
 	public List<LockableResource> getResources() {
@@ -90,7 +86,7 @@ public class LockableResourcesRootAction implements RootAction {
 
 	public void doUnlock(StaplerRequest req, StaplerResponse rsp)
 			throws IOException, ServletException {
-		Jenkins.getInstance().checkPermission(UNLOCK);
+		Jenkins.get().checkPermission(UNLOCK);
 
 		String name = req.getParameter("resource");
 		LockableResource r = LockableResourcesManager.get().fromName(name);
@@ -108,7 +104,7 @@ public class LockableResourcesRootAction implements RootAction {
 
 	public void doReserve(StaplerRequest req, StaplerResponse rsp)
 		throws IOException, ServletException {
-		Jenkins.getInstance().checkPermission(RESERVE);
+		Jenkins.get().checkPermission(RESERVE);
 
 		String name = req.getParameter("resource");
 		LockableResource r = LockableResourcesManager.get().fromName(name);
@@ -180,7 +176,7 @@ public class LockableResourcesRootAction implements RootAction {
 
 	public void doUnreserve(StaplerRequest req, StaplerResponse rsp)
 		throws IOException, ServletException {
-		Jenkins.getInstance().checkPermission(RESERVE);
+		Jenkins.get().checkPermission(RESERVE);
 
 		String name = req.getParameter("resource");
 		LockableResource r = LockableResourcesManager.get().fromName(name);
@@ -191,7 +187,7 @@ public class LockableResourcesRootAction implements RootAction {
 
 		String userName = getUserName();
 		if ((userName == null || !userName.equals(r.getReservedBy()))
-				&& !Jenkins.getInstance().hasPermission(Jenkins.ADMINISTER))
+				&& !Jenkins.get().hasPermission(Jenkins.ADMINISTER))
 			throw new AccessDeniedException2(Jenkins.getAuthentication(),
 					RESERVE);
 
@@ -204,7 +200,7 @@ public class LockableResourcesRootAction implements RootAction {
 
 	public void doReset(StaplerRequest req, StaplerResponse rsp)
 		throws IOException, ServletException {
-		Jenkins.getInstance().checkPermission(UNLOCK);
+		Jenkins.get().checkPermission(UNLOCK);
 
 		String name = req.getParameter("resource");
 		LockableResource r = LockableResourcesManager.get().fromName(name);

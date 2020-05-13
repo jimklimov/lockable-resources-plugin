@@ -68,9 +68,12 @@ public class LockableResource extends AbstractDescribableImpl<LockableResource>
    * Was used within the initial implementation of Pipeline functionality using {@link LockStep},
    * but became deprecated once several resources could be locked at once. See queuedContexts in
    * {@link LockableResourcesManager}.
+   *
+   * @deprecated Replaced with LockableResourcesManager.queuedContexts (since 1.11)
    */
   @Deprecated private List<StepContext> queuedContexts = new ArrayList<>();
 
+  /** @deprecated Use single-argument constructor instead (since 1.8) */
   @Deprecated
   public LockableResource(String name, String description, String labels, String reservedBy) {
     this.name = name;
@@ -84,13 +87,14 @@ public class LockableResource extends AbstractDescribableImpl<LockableResource>
     this.name = name;
   }
 
-  private Object readResolve() {
+  protected Object readResolve() {
     if (queuedContexts == null) { // this field was added after the initial version if this class
       queuedContexts = new ArrayList<>();
     }
     return this;
   }
 
+  /** @deprecated Replaced with LockableResourcesManager.queuedContexts (since 1.11) */
   @Deprecated
   public List<StepContext> getQueuedContexts() {
     return this.queuedContexts;
@@ -161,8 +165,7 @@ public class LockableResource extends AbstractDescribableImpl<LockableResource>
     binding.setVariable("resourceDescription", description);
     binding.setVariable("resourceLabels", makeLabelsList());
     try {
-      Object result =
-          script.evaluate(Jenkins.getInstance().getPluginManager().uberClassLoader, binding);
+      Object result = script.evaluate(Jenkins.get().getPluginManager().uberClassLoader, binding);
       if (LOGGER.isLoggable(Level.FINE)) {
         LOGGER.fine(
             "Checked resource "
@@ -195,7 +198,7 @@ public class LockableResource extends AbstractDescribableImpl<LockableResource>
   public String getReservedByEmail() {
     if (reservedBy != null) {
       UserProperty email = null;
-      User user = Jenkins.getInstance().getUser(reservedBy);
+      User user = Jenkins.get().getUser(reservedBy);
       if (user != null) email = user.getProperty(UserProperty.class);
       if (email != null) return email.getAddress();
     }
@@ -253,7 +256,11 @@ public class LockableResource extends AbstractDescribableImpl<LockableResource>
     return build;
   }
 
-  /** @see WithBridgeMethods */
+  /**
+   * @see WithBridgeMethods
+   * @deprecated Return value of {@link #getBuild()} was widened from AbstractBuild to Run (since
+   *     1.8)
+   */
   @Deprecated
   private Object getAbstractBuild(final Run owner, final Class targetClass) {
     return owner instanceof AbstractBuild ? (AbstractBuild) owner : null;
