@@ -76,10 +76,6 @@ public class LockableResourcesRootAction implements RootAction {
 		return LockableResourcesManager.get().getResources();
 	}
 
-	public LockableResource getResource(final String resourceName) {
-		return LockableResourcesManager.get().fromName(resourceName);
-	}
-
 	public int getFreeResourceAmount(String label) {
 		return LockableResourcesManager.get().getFreeResourceAmount(label);
 	}
@@ -126,12 +122,9 @@ public class LockableResourcesRootAction implements RootAction {
 		List<LockableResource> resources = new ArrayList<>();
 		resources.add(r);
 		String userName = getUserName();
-		if (userName != null) {
-			if (!LockableResourcesManager.get().reserve(resources, userName)) {
-				rsp.sendError(423, "Resource '" + name + "' already reserved or locked!");
-				return;
-			};
-		}
+		if (userName != null)
+			LockableResourcesManager.get().reserve(resources, userName);
+
 		rsp.forwardToPreviousPage(req);
 	}
 
@@ -178,29 +171,4 @@ public class LockableResourcesRootAction implements RootAction {
 
 		rsp.forwardToPreviousPage(req);
 	}
-
-  @RequirePOST
-  public void doSaveNote(final StaplerRequest req, final StaplerResponse rsp)
-    throws IOException, ServletException {
-    Jenkins.get().checkPermission(RESERVE);
-
-    String resourceName = req.getParameter("resource");
-    if (resourceName == null) {
-      resourceName = req.getParameter("resourceName");
-    }
-
-    final LockableResource resource = getResource(resourceName);
-    if (resource == null) {
-      rsp.sendError(404, "Resource not found: '" + resourceName + "'!");
-    } else {
-      String resourceNote = req.getParameter("note");
-      if (resourceNote == null) {
-        resourceNote = req.getParameter("resourceNote");
-      }
-      resource.setNote(resourceNote);
-      LockableResourcesManager.get().save();
-
-      rsp.forwardToPreviousPage(req);
-    }
-  }
 }
