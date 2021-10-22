@@ -777,6 +777,7 @@ public class LockableResourcesManager extends GlobalConfiguration {
     save();
   }
 
+  @NonNull
   @Override
   public String getDisplayName() {
     return "External Resources";
@@ -790,7 +791,7 @@ public class LockableResourcesManager extends GlobalConfiguration {
   }
 
   @Override
-  public boolean configure(StaplerRequest req, JSONObject json) throws FormException {
+  public boolean configure(StaplerRequest req, JSONObject json) {
     try (BulkChange bc = new BulkChange(this)) {
       // reset resources to default which are not currently locked
       this.resources.removeIf(resource -> !resource.isLocked());
