@@ -2,6 +2,7 @@ package org.jenkins.plugins.lockableresources;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 
@@ -98,6 +99,6 @@ public class LockableResourceTest {
 
   @Test
   public void testEquals() {
-    assertFalse(instance.equals(null));
+    assertNotEquals(null, instance);
   }
 }
