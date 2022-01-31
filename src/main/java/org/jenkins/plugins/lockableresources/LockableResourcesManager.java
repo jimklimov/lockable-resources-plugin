@@ -99,6 +99,7 @@ public class LockableResourcesManager extends GlobalConfiguration {
         locked.setDescription(r.getDescription());
         locked.setLabels(r.getLabels());
         locked.setEphemeral(false);
+        locked.setNote(r.getNote());
         mergedResources.add(locked);
         continue;
       }
@@ -109,6 +110,7 @@ public class LockableResourcesManager extends GlobalConfiguration {
       // Removed locks became ephemeral.
       r.setDescription("");
       r.setLabels("");
+      r.setNote("");
       r.setEphemeral(true);
       mergedResources.add(r);
     }
@@ -649,7 +651,7 @@ public class LockableResourcesManager extends GlobalConfiguration {
       }
     }
     for (LockableResource r : resources) {
-      r.setReservedBy(userName);
+      r.reserve(userName);
     }
     save();
     return true;
@@ -823,6 +825,8 @@ public class LockableResourcesManager extends GlobalConfiguration {
 
   @Override
   public boolean configure(StaplerRequest req, JSONObject json) {
+    final List<LockableResource> oldDeclaredResources = new ArrayList<>(getDeclaredResources());
+
     try (BulkChange bc = new BulkChange(this)) {
       // reset resources to default which are not currently locked
       this.resources.removeIf(resource -> !resource.isLocked());
@@ -833,6 +837,20 @@ public class LockableResourcesManager extends GlobalConfiguration {
           Level.WARNING, "Exception occurred while committing bulkchange operation.", exception);
       return false;
     }
+
+    // Copy unconfigurable properties from old instances
+    boolean updated = false;
+    for (LockableResource oldDeclaredResource: oldDeclaredResources) {
+      final LockableResource updatedResource = fromName(oldDeclaredResource.getName());
+      if (updatedResource != null) {
+        updatedResource.copyUnconfigurableProperties(oldDeclaredResource);
+        updated = true;
+      }
+    }
+    if (updated) {
+      save();
+    }
+
     return true;
   }
 
